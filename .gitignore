@@ -1,0 +1,7 @@
+*.csv
+*.zip
+download*
+__pycache__
+venv
+.idea/
+settings.py
