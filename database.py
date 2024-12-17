@@ -14,6 +14,20 @@ class DataBaseFront:
         results = self.cursor.fetchall()
         return [{'id': r[0], 'name': r[1] } for r in results]
 
+    def load_reverse_taxon_resolution_data(self):
+        self.cursor.execute(
+            """
+                select distinct t.nom_especie, t.id, g2.nom, t.id_gbif  
+                from especieinvasora t,
+                grupespecie g,
+                grup g2 
+                where t.id = g.idespecieinvasora
+                and g.idgrup = g2.id 
+                order by 1
+            """, )
+        results = self.cursor.fetchall()
+        return [ [r[0],r[1],r[2],r[3]] for r in results]
+
     def load_taxons(self):
         retval = []
         self.cursor.execute(
@@ -61,7 +75,7 @@ class DataBaseFront:
             # print("LOGGING INSERT")
             # print("INSERT INTO public.citacions( especie, idspinvasora, grup, data, autor_s, observacions, id_paquet, hash, origen_dades) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})".format(translated_dict['especie'],translated_dict['idspinvasora'],translated_dict['grup'],translated_dict['data'],translated_dict['autor_s'],translated_dict['observacions'],id_paquet,translated_dict['hash'],'https://www.gbif.org/publisher/7b4f2f30-a456-11d9-8049-b8a03c50a862'))
             id = self.cursor.fetchone()[0]
-            print('Performed insert ' + id_paquet + ', row id ' + str(id))
+            # print('Performed insert ' + id_paquet + ', row id ' + str(id))
             self.cursor.execute(
                 """
                 UPDATE public.citacions set
