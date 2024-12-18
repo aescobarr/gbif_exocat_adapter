@@ -5,8 +5,8 @@ class GBIFToExoAdapter:
     def __init__(self, id_translator):
         self.id_translator = id_translator
 
-    def translate(self, gbif_data):
-        return {
+    def translate(self, gbif_data, append=None):
+        retval = {
             'especie':          self.id_translator[gbif_data[33]][0],  # Nom de la espècie
             'idspinvasora':     self.id_translator[gbif_data[33]][1],  # Id espècie invasora
             'grup':             self.id_translator[gbif_data[33]][2],  # Grup del taxon
@@ -16,5 +16,9 @@ class GBIFToExoAdapter:
             'autor_s':          gbif_data[44],  # Autor de la cita,
             'localitat':        gbif_data[16],
             'hash':             gbif_data[0],
-            'observacions':     ''
+            'observacions':     '',
         }
+        if append:
+            for key in append:
+                retval[key] = append[key]
+        return retval

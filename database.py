@@ -17,12 +17,12 @@ class DataBaseFront:
     def load_reverse_taxon_resolution_data(self):
         self.cursor.execute(
             """
-                select distinct t.nom_especie, t.id, g2.nom, t.id_gbif  
+                select distinct t.nom_especie, t.id, g2.nom, t.id_gbif
                 from especieinvasora t,
                 grupespecie g,
-                grup g2 
+                grup g2
                 where t.id = g.idespecieinvasora
-                and g.idgrup = g2.id 
+                and g.idgrup = g2.id
                 order by 1
             """, )
         results = self.cursor.fetchall()
@@ -58,7 +58,7 @@ class DataBaseFront:
         try:
             self.cursor.execute(
                 """
-                INSERT INTO public.citacions( especie, idspinvasora, grup, data, autor_s, observacions, id_paquet, hash, origen_dades) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                INSERT INTO public.citacions( especie, idspinvasora, grup, data, autor_s, observacions, id_paquet, hash, origen_dades, font) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
                 """,
                 (
                     translated_dict['especie'],
@@ -70,6 +70,7 @@ class DataBaseFront:
                     id_paquet,
                     translated_dict['hash'],
                     'https://www.gbif.org/publisher/7b4f2f30-a456-11d9-8049-b8a03c50a862',
+                    translated_dict['font'],
                 )
             )
             # print("LOGGING INSERT")
