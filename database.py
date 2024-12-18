@@ -8,6 +8,19 @@ class DataBaseFront:
         self.conn = psycopg2.connect(self.conn_string)
         self.cursor = self.conn.cursor()
 
+    def row_already_exists(self, hash):
+        self.cursor.execute(
+            """
+            SELECT hash FROM public.citacions WHERE hash=%s
+            """,
+            (hash,)
+        )
+        res = self.cursor.fetchone()
+        if res is not None:
+            if len(res) > 0:
+                return True
+        return False
+
     def load_especies_invasores(self):
         self.cursor.execute(
             """select t.id_gbif, t.nom_especie from especieinvasora t order by 2""", )
@@ -54,11 +67,61 @@ class DataBaseFront:
             retval[result[1]] = [result[0],result[2]]
         return retval
 
+    def sql_update_citacio(self, translated_dict, id_paquet):
+        self.cursor.execute(
+            """
+            UPDATE public.citacions set especie=%s, idspinvasora=%s, grup=%s, data=%s, autor_s=%s, observacions=%s,
+            id_paquet=%s,origen_dades=%s, localitat=%s, citacio=%s
+            where hash=%s;
+            """,
+            (
+                translated_dict['especie'],
+                translated_dict['idspinvasora'],
+                translated_dict['grup'],
+                translated_dict['data'],
+                translated_dict['autor_s'][:254],
+                translated_dict['observacions'],
+                id_paquet,
+                'https://www.gbif.org/',
+                translated_dict['localitat'],
+                translated_dict['citacio'],
+                translated_dict['hash'],
+            )
+        )
+        self.cursor.execute(
+            """
+            UPDATE public.citacions set
+                geom_4326 = st_geomfromtext( %s ,4326),
+                geom = st_transform(st_geomfromtext( %s ,4326),23031),
+                utmx =  st_x(st_transform(st_geomfromtext( %s ,4326),23031)),
+                utmy =  st_y(st_transform(st_geomfromtext( %s ,4326),23031))
+                where hash=%s;
+            """,
+            (
+                'POINT({0} {1})'.format(translated_dict['long'], translated_dict['lat']),
+                'POINT({0} {1})'.format(translated_dict['long'], translated_dict['lat']),
+                'POINT({0} {1})'.format(translated_dict['long'], translated_dict['lat']),
+                'POINT({0} {1})'.format(translated_dict['long'], translated_dict['lat']),
+                translated_dict['hash'],
+            )
+        )
+        self.cursor.execute(
+            """
+            UPDATE public.citacions set
+            geom_25831 = st_transform(geom_4326, 25831)
+            where hash=%s;
+            """,
+            (
+                translated_dict['hash'],
+            )
+        )
+        self.conn.commit()
+
     def sql_insert_citacio(self, translated_dict, id_paquet):
         try:
             self.cursor.execute(
                 """
-                INSERT INTO public.citacions( especie, idspinvasora, grup, data, autor_s, observacions, id_paquet, hash, origen_dades, font) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                INSERT INTO public.citacions( especie, idspinvasora, grup, data, autor_s, observacions, id_paquet, hash, origen_dades, citacio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
                 """,
                 (
                     translated_dict['especie'],
@@ -69,8 +132,8 @@ class DataBaseFront:
                     translated_dict['observacions'],
                     id_paquet,
                     translated_dict['hash'],
-                    'https://www.gbif.org/publisher/7b4f2f30-a456-11d9-8049-b8a03c50a862',
-                    translated_dict['font'],
+                    'https://www.gbif.org/',
+                    translated_dict['citacio'],
                 )
             )
             # print("LOGGING INSERT")

@@ -13,17 +13,28 @@ import zipfile
 import glob
 
 SIMPLER_POL = "POLYGON ((0.41748 40.446947, 1.043701 40.697299, 1.07666 41.004775, 2.219238 41.261291, 3.284912 41.836828, 3.240967 42.544987, 0.516357 42.932296, 0.527344 42.024814, 0.076904 40.971604, 0.131836 40.555548, 0.41748 40.446947))"
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 
 def config_logging(folder_path):
-    logging.basicConfig(
-        filename=os.path.join(folder_path, 'session.log'),
-        level=logging.INFO,
-        force=True,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+
+    fileHandler = logging.FileHandler("{0}/{1}.log".format(folder_path, 'session'))
+    fileHandler.setFormatter(logFormatter)
+    logger.addHandler(fileHandler)
+
+    consoleHandler = logging.StreamHandler()
+    consoleHandler.setFormatter(logFormatter)
+    logger.addHandler(consoleHandler)
+
+    # logging.basicConfig(
+    #     filename=os.path.join(folder_path, 'session.log'),
+    #     level=logging.INFO,
+    #     force=True,
+    #     format='%(asctime)s - %(levelname)s - %(message)s',
+    #     datefmt='%Y-%m-%d %H:%M:%S'
+    # )
     logger.info("*********************")
     logger.info(f"Log ready")
 
@@ -142,6 +153,7 @@ def extract_files(download_folder):
         with zipfile.ZipFile(f, 'r') as zip_ref:
             zip_ref.extractall(download_folder)
 
+
 def process_files(download_folder, reverse_resolution_cache, availability_data):
     logger.info("*********************")
     logger.info("Processing downloaded files")
@@ -151,27 +163,30 @@ def process_files(download_folder, reverse_resolution_cache, availability_data):
     adapter = GBIFToExoAdapter(id_translator=reverse_resolution_cache)
     files = glob.glob(search_pattern)
     date_now = datetime.now().strftime("%d-%m-%Y")
-    taxon_count = 0
-    line_count = 1
+    id_paquet = 'dades_importacio_gbif_' + date_now
     for f in files:
         file_key = os.path.splitext(os.path.basename(f))[0]
         with open(f) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter='\t')
             for row in csv_reader:
-                try:
-                    append = {'font': "https://doi.org/{0}".format(availability_data['download_meta'][file_key]) }
-                    translated_dict = adapter.translate(row, append=append)
-                    if translated_dict['long'] != '' and translated_dict['lat'] != '':
-                        database.sql_insert_citacio(translated_dict,'dades_importacio_gbif_' + date_now)
-                        taxon_count += 1
-                except KeyError:
-                    logger.info("Ignoring species {0}, key {1}".format(row[9],row[33]))
-                    pass
-                except IndexError:
-                    logger.info("Error!")
-                    logger.info("Row " + "File " + f + ";".join(row))
-                finally:
-                    line_count += 1
+                if row[11] == 'SPECIES':
+                    try:
+                        append = {'citacio': "https://doi.org/{0}".format(availability_data['download_meta'][file_key]) }
+                        translated_dict = adapter.translate(row, append=append)
+                        if not database.row_already_exists(translated_dict['hash']):
+                            database.sql_insert_citacio(translated_dict, id_paquet)
+                            logger.info('Inserted row with hash {0}, species {1}'.format(translated_dict['hash'], translated_dict['especie']))
+                        else:
+                            database.sql_update_citacio(translated_dict, id_paquet)
+                            logger.info('Updated row with hash {0}'.format(translated_dict['hash']))
+                    except KeyError:
+                        logger.info("Ignoring species {0}, key {1}, hash {2}".format(row[9],row[33],row[0]))
+                        pass
+                    except IndexError:
+                        logger.info("Error!")
+                        logger.info("Row " + "File " + f + ";".join(row))
+                else:
+                    logger.info("Ignoring row for species {0}, key {1}, hash {2}, rank {3}".format(row[9], row[33], row[0], row[11]))
 
 def create_reverse_cached_taxon_resolution_file():
     logger.info("*********************")
@@ -183,6 +198,7 @@ def create_reverse_cached_taxon_resolution_file():
         writer.writerows(data)
     logger.info("File created, {0} rows".format(len(data)))
 
+
 def load_cached_taxon_resolution_results():
     retVal = {}
     with open("cached_taxon_resolution_results.csv", "r") as f:
@@ -191,11 +207,12 @@ def load_cached_taxon_resolution_results():
             retVal[row[3]] = [row[0], row[1], row[2]]
     return retVal
 
+
 def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     folder_name = f"download_{timestamp}"
     folder_path = os.path.join(os.getcwd(), folder_name)
-    pre_setup( folder_path, folder_name )
+    pre_setup(folder_path, folder_name)
     config_logging(folder_path)
     create_species_file()
     cached_resolution_file = load_cached_taxon_resolution_results()
@@ -213,6 +230,7 @@ def main():
     #         "predicates": [
     #             {"type": "in", "key": "TAXON_KEY", "values": species_block},
     #             {"type": "equals", "key": "HAS_COORDINATE", "value": "true"},
+    #             {"type": "equals", "key": "TAXON_RANK", "value": "SPECIES"},
     #             {"type": "equals", "key": "COUNTRY", "value": "ES"},
     #             {"type": "isNotNull", "parameter": "EVENT_DATE"},
     #             {
