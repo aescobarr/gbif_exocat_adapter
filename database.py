@@ -3,10 +3,24 @@ import psycopg2
 
 
 class DataBaseFront:
-    def __init__(self, settings):
+    def __init__(self, settings, logger):
         self.conn_string = "host='" + settings.db_host + "' dbname='" + settings.db_name + "' user='" + settings.db_user + "' password='" + settings.db_password + "' port='" + settings.db_port + "'"
         self.conn = psycopg2.connect(self.conn_string)
         self.cursor = self.conn.cursor()
+        self.logger = logger
+
+    def row_already_exists_10_10(self, hash):
+        self.cursor.execute(
+            """
+            SELECT hash FROM public.citacions_10 WHERE hash=%s
+            """,
+            (hash,)
+        )
+        res = self.cursor.fetchone()
+        if res is not None:
+            if len(res) > 0:
+                return True
+        return False
 
     def row_already_exists(self, hash):
         self.cursor.execute(
@@ -21,6 +35,34 @@ class DataBaseFront:
                 return True
         return False
 
+    def resolve_to_grid(self, x, y):
+        self.cursor.execute(
+            """
+            select code_utm_1 from quad_temp where resolution = 10000 and st_contains(st_transform(geom, 4326), st_geomfromtext('POINT (%s %s)', 4326));
+            """,
+            (x, y)
+        )
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            return None
+
+    def load_grid_resolver_tables(self):
+        self.cursor.execute(
+            """
+            select code_utm_1, st_xmin(st_transform(geom, 4326)) as xmin, st_xmax(st_transform(geom, 4326)) from quad_temp where resolution = 10000 order by st_xmin(st_transform(geom, 4326));
+            """,
+        )
+        x_table = self.cursor.fetchall()
+        self.cursor.execute(
+            """
+            select code_utm_1, st_ymin(st_transform(geom, 4326)) as ymin, st_ymax(st_transform(geom, 4326)) from quad_temp where resolution = 10000 order by st_xmin(st_transform(geom, 4326));
+            """
+        )
+        y_table = self.cursor.fetchall()
+        return [x_table, y_table]
+
     def load_especies_invasores(self):
         self.cursor.execute(
             """select t.id_gbif, t.nom_especie from especieinvasora t order by 2""", )
@@ -30,7 +72,7 @@ class DataBaseFront:
     def load_reverse_taxon_resolution_data(self):
         self.cursor.execute(
             """
-                select distinct t.nom_especie, t.id, g2.nom, t.id_gbif
+                select distinct t.nom_especie, t.id, g2.id, t.id_gbif
                 from especieinvasora t,
                 grupespecie g,
                 grup g2
@@ -66,6 +108,28 @@ class DataBaseFront:
         for result in results:
             retval[result[1]] = [result[0],result[2]]
         return retval
+
+    def sql_update_citacio_10_10(self, translated_dict, id_paquet):
+        self.cursor.execute(
+            """
+        UPDATE public.citacions_10 set especie=%s,idspinvasora=%s,grup=%s,utm_10=%s,descripcio=%s,data=%s,anyo=%s,autor_s=%s,font=%s,referencia=%s,id_paquet=%s
+        where hash=%s;
+        """,
+        (
+            translated_dict['especie'],
+            translated_dict['idspinvasora'],
+            translated_dict['grup'],
+            translated_dict['utm_10'],
+            translated_dict['descripcio'],
+            translated_dict['data'],
+            translated_dict['anyo'],
+            translated_dict['autor_s'],
+            translated_dict['font'],
+            translated_dict['referencia'],
+            id_paquet,
+            translated_dict['hash']
+        ))
+        self.conn.commit()
 
     def sql_update_citacio(self, translated_dict, id_paquet):
         self.cursor.execute(
@@ -116,6 +180,45 @@ class DataBaseFront:
             )
         )
         self.conn.commit()
+
+    def sql_insert_citacio_10_10(self, translated_dict, id_paquet):
+        try:
+            self.cursor.execute(
+                """
+                INSERT INTO public.citacions_10( especie, idspinvasora, grup, utm_10, descripcio, data, anyo, autor_s, font, referencia, hash, id_paquet) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """,
+                (
+                    translated_dict['especie'],
+                    translated_dict['idspinvasora'],
+                    translated_dict['grup'],
+                    translated_dict['utm_10'],
+                    translated_dict['descripcio'],
+                    translated_dict['data'],
+                    translated_dict['anyo'],
+                    translated_dict['autor_s'],
+                    translated_dict['font'],
+                    translated_dict['referencia'],
+                    translated_dict['hash'],
+                    id_paquet,
+                )
+            )
+            try:
+                self.cursor.execute(
+                """
+                    INSERT INTO public.presencia_sp(idquadricula, idspinvasora) VALUES (%s, %s)
+                    """,
+            (
+                    translated_dict['utm_10'],
+                    translated_dict['idspinvasora'])
+                )
+            except psycopg2.IntegrityError:
+                pass
+            self.conn.commit()
+        except psycopg2.InternalError as e:
+            print(e)
+        except psycopg2.DataError as e:
+            print(e)
+            print(translated_dict)
 
     def sql_insert_citacio(self, translated_dict, id_paquet):
         try:
