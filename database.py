@@ -123,7 +123,7 @@ class DataBaseFront:
             translated_dict['descripcio'],
             translated_dict['data'],
             translated_dict['anyo'],
-            translated_dict['autor_s'],
+            translated_dict['autor_s'][:254],
             translated_dict['font'],
             translated_dict['referencia'],
             id_paquet,
@@ -147,7 +147,7 @@ class DataBaseFront:
                 translated_dict['observacions'],
                 id_paquet,
                 'https://www.gbif.org/',
-                translated_dict['localitat'],
+                translated_dict['localitat'][:254],
                 translated_dict['citacio'],
                 translated_dict['hash'],
             )
@@ -195,7 +195,7 @@ class DataBaseFront:
                     translated_dict['descripcio'],
                     translated_dict['data'],
                     translated_dict['anyo'],
-                    translated_dict['autor_s'],
+                    translated_dict['autor_s'][:254],
                     translated_dict['font'],
                     translated_dict['referencia'],
                     translated_dict['hash'],
@@ -224,7 +224,7 @@ class DataBaseFront:
         try:
             self.cursor.execute(
                 """
-                INSERT INTO public.citacions( especie, idspinvasora, grup, data, autor_s, observacions, id_paquet, hash, origen_dades, citacio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                INSERT INTO public.citacions( especie, idspinvasora, grup, data, autor_s, localitat, observacions, id_paquet, hash, origen_dades, citacio) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
                 """,
                 (
                     translated_dict['especie'],
@@ -232,6 +232,7 @@ class DataBaseFront:
                     translated_dict['grup'],
                     translated_dict['data'],
                     translated_dict['autor_s'][:254],
+                    translated_dict['localitat'][:254],
                     translated_dict['observacions'],
                     id_paquet,
                     translated_dict['hash'],
