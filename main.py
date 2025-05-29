@@ -6,6 +6,7 @@ import csv
 import requests
 import settings
 from database import DataBaseFront
+from local_filterer import Filterer
 from gbif_to_exocat_adapter import GBIFToExoAdapter
 import logging
 from datetime import datetime
@@ -152,6 +153,16 @@ def extract_files(download_folder):
     for f in files:
         with zipfile.ZipFile(f, 'r') as zip_ref:
             zip_ref.extractall(download_folder)
+
+
+def process_file_faster(file_name, reverse_resolution_cache):
+    logger.info("*********************")
+    logger.info("Filtering file")
+    filterer = Filterer(file_name)
+    filterer.filter(outside_file="outside_points.csv", inside_file="inside_points.csv")
+    database = DataBaseFront(settings, logger)
+    database.get_already_in_database_ids("outside_points.csv")
+
 
 
 def process_file(file_name, reverse_resolution_cache):

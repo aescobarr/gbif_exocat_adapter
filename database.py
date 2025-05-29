@@ -1,5 +1,7 @@
 import settings
 import psycopg2
+import csv
+from io import StringIO
 
 
 class DataBaseFront:
@@ -271,3 +273,46 @@ class DataBaseFront:
             print(e)
             print(translated_dict)
 
+    def create_temp_hash_table(self):
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS temp_ids (hash varchar(5450) PRIMARY KEY);")
+        self.conn.commit()
+
+    def drop_temp_hash_table(self):
+        self.cursor.execute("DROP TABLE IF EXISTS temp_ids;")
+        self.conn.commit()
+
+    def load_temp_hash_table(self,filename):
+        output = StringIO()
+        ids_list = set()
+        with open(filename, newline='', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile, delimiter='\t')
+            next(reader, None)  # Skip header if it exists
+            for row in reader:
+                if row:
+                    if row[0] not in ids_list:
+                        ids_list.add(row[0])
+                        output.write(f"{row[0]}\n")
+
+        output.seek(0)  # Reset buffer position
+
+        # Use COPY to bulk insert into the table
+        self.cursor.copy_expert("COPY temp_ids(hash) FROM STDIN WITH (FORMAT csv)", output)
+        self.conn.commit()
+
+    def get_present_ids(self, file_name, table):
+        self.drop_temp_hash_table()
+        self.create_temp_hash_table()
+        self.load_temp_hash_table(file_name)
+
+        query_template_present = "SELECT c.id, c.hash FROM public.{0} c left join temp_ids t on c.hash = t.hash where c.hash is not null and t.hash is not null;"
+
+        # Already in database
+        query = query_template_present.format(table)
+        self.cursor.execute( query, ())
+        results_present = self.cursor.fetchall()
+        self.conn.commit()
+
+        retval = set()
+        for r in results_present:
+            retval.add( r[1] )
+        return retval
