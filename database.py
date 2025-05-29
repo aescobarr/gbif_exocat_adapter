@@ -65,7 +65,7 @@ class DataBaseFront:
 
     def load_especies_invasores(self):
         self.cursor.execute(
-            """select t.id_gbif, t.nom_especie from especieinvasora t order by 2""", )
+            """select t.id_gbif, t.nom_especie from especieinvasora t where t.id_gbif is not null order by 2""", )
         results = self.cursor.fetchall()
         return [{'id': r[0], 'name': r[1] } for r in results]
 
@@ -78,6 +78,7 @@ class DataBaseFront:
                 grup g2
                 where t.id = g.idespecieinvasora
                 and g.idgrup = g2.id
+                and t.id_gbif is not null
                 order by 1
             """, )
         results = self.cursor.fetchall()
@@ -249,11 +250,13 @@ class DataBaseFront:
                 UPDATE public.citacions set
                     geom_4326 = st_geomfromtext( %s ,4326),
                     geom = st_transform(st_geomfromtext( %s ,4326),23031),
+                    geom_25831 = st_transform(st_geomfromtext( %s ,4326), 25831),
                     utmx =  st_x(st_transform(st_geomfromtext( %s ,4326),23031)),
                     utmy =  st_y(st_transform(st_geomfromtext( %s ,4326),23031))
                     where id=%s;
                 """,
                 (
+                    'POINT({0} {1})'.format(translated_dict['long'], translated_dict['lat']),
                     'POINT({0} {1})'.format(translated_dict['long'], translated_dict['lat']),
                     'POINT({0} {1})'.format(translated_dict['long'], translated_dict['lat']),
                     'POINT({0} {1})'.format(translated_dict['long'], translated_dict['lat']),
