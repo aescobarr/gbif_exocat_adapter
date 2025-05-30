@@ -155,15 +155,57 @@ def extract_files(download_folder):
             zip_ref.extractall(download_folder)
 
 
-def process_file_faster(file_name, reverse_resolution_cache):
+def process_file_faster(file_name, reverse_resolution_cache, results_folder):
     logger.info("*********************")
     logger.info("Filtering file")
-    filterer = Filterer(file_name)
-    filterer.filter(outside_file="outside_points.csv", inside_file="inside_points.csv")
+    date_now = datetime.now().strftime("%d-%m-%Y")
+    id_paquet = 'dades_importacio_gbif_' + date_now
+    filterer = Filterer("./shapefile_cat/shapefile_cat.shp",file_name,logger)
+    filterer.filter_shapefile_limit(
+        outside_file=results_folder + "/outside_points.csv",
+        inside_file=results_folder + "/inside_points.csv"
+    )
+    filterer.split_citacions(
+        input_file=results_folder + "/inside_points.csv",
+        output_point_file=results_folder + "/inside_points_p.csv",
+        output_grid_file=results_folder + "/inside_points_grid.csv"
+    )
+
+    filterer = Filterer("./shapefile_grid/grid_10000.shp",
+                        results_folder + "/inside_points_grid.csv", logger)
+    hash_to_grid_table = filterer.generate_grid_table()
+
     database = DataBaseFront(settings, logger)
-    database.get_already_in_database_ids("outside_points.csv")
+    adapter = GBIFToExoAdapter(id_translator=reverse_resolution_cache, ten_ten_resolver=database, logger=logger)
 
+    present_points = database.get_present_ids(
+        file_name=results_folder + "/inside_points_p.csv",
+        table="citacions"
+    )
+    present_grids = database.get_present_ids(
+        file_name=results_folder + "/inside_points_grid.csv",
+        table="citacions_10"
+    )
 
+    params_insert_point = adapter.get_insert_params_point(
+        points_file=results_folder + "/inside_points_p.csv",
+        presence_table=present_points,
+        id_paquet=id_paquet
+    )
+
+    print( "{} sets of insert params".format(len(params_insert_point)) )
+    if len(params_insert_point) > 0:
+        database.sql_insert_citacio_bulk(params_insert_point,id_paquet)
+
+    params_insert_10 = adapter.get_insert_params_10(
+        grid_file=results_folder + "/inside_points_grid.csv",
+        presence_table=present_grids,
+        id_paquet=id_paquet,
+        grid_presence=hash_to_grid_table
+    )
+    print("{} sets of insert params".format(len(params_insert_10)))
+    if len(params_insert_10) > 0:
+        database.sql_insert_citacio_10_bulk(params_insert_10)
 
 def process_file(file_name, reverse_resolution_cache):
     logger.info("*********************")
@@ -409,4 +451,9 @@ if __name__ == "__main__":
     pre_setup(folder_path, folder_name)
     config_logging(folder_path)
     cached_resolution_file = load_cached_taxon_resolution_results()
-    process_file("/home/webuser/dev/python/gbif_downloader/gbif.filtered.with.quotes.2025-05-16.txt", cached_resolution_file)
+    # process_file("/home/webuser/dev/python/gbif_downloader/gbif.filtered.with.quotes.2025-05-16.txt", cached_resolution_file)
+    process_file_faster(
+        file_name="/home/webuser/dev/python/gbif_downloader/gbif.filtered.with.quotes.2025-05-16.txt",
+        reverse_resolution_cache=cached_resolution_file,
+        results_folder=folder_path
+    )

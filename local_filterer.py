@@ -5,12 +5,13 @@ from shapely.geometry import Point
 
 
 class Filterer:
-    def __init__(self, shapefile, datafile):
+    def __init__(self, shapefile, datafile, logger):
         self.loaded_shapefile = gpd.read_file(shapefile)
         self.df = pd.read_csv(datafile, sep='\t', low_memory=False)
+        self.logger=logger
 
 
-    def generate_grid_table(self, out_file):
+    def generate_grid_table(self):
         grid = self.loaded_shapefile
 
         # Load the CSV with coordinates and IDs
@@ -29,24 +30,24 @@ class Filterer:
         # Replace 'grid_id_column_name' with actual name in the grid shapefile (e.g., 'grid_code')
         result = joined[['gbifID', 'id']]  # example: 'row_id', 'grid_code'
 
-        # Save to CSV
-        result.to_csv(out_file, index=False)
+        return result.set_index('gbifID').T.to_dict('index')
+
 
     def filter_shapefile_limit(self, outside_file, inside_file):
         points = [Point(xy) for xy in zip(self.df['decimalLongitude'], self.df['decimalLatitude'])]
         gdf = gpd.GeoDataFrame(self.df, geometry=points)
         gdf.set_crs(self.loaded_shapefile.crs, inplace=True)
 
-        print("Shapefile crs {}".format(self.loaded_shapefile.crs))
-        print("CSV crs {}".format(gdf.crs))
-        print("Geometry type shapefile {}".format(self.loaded_shapefile.geom_type.unique()))
+        self.logger.info("Shapefile crs {}".format(self.loaded_shapefile.crs))
+        self.logger.info("CSV crs {}".format(gdf.crs))
+        self.logger.info("Geometry type shapefile {}".format(self.loaded_shapefile.geom_type.unique()))
 
         # Spatial join: Check if point is inside the shapefile geometry
         # `op='within'` is now deprecated; use `predicate='within'`
         joined = gpd.sjoin(gdf, self.loaded_shapefile, how='left', predicate='within')
 
-        print("Number of points outside {}".format(joined['index_right'].isna().sum()))  # Number of points outside
-        print("Number of points inside {}".format(joined['index_right'].notna().sum()))  # Number of points inside
+        self.logger.info("Number of points outside {}".format(joined['index_right'].isna().sum()))  # Number of points outside
+        self.logger.info("Number of points inside {}".format(joined['index_right'].notna().sum()))  # Number of points inside
 
         # Classify: If joined value is NaN, point is outside
         inside = joined[joined['index_right'].notna()]

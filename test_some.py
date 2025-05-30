@@ -15,7 +15,7 @@ def test_existing_rows():
     present_grids = database.get_present_ids(file_name="inside_points_grid.csv", table="citacions_10")
 
     filterer = Filterer("./shapefile_grid/grid_10000.shp", "/home/webuser/dev/python/gbif_downloader/inside_points_grid.csv")
-    filterer.generate_grid_table(out_file="point_to_grid_mapping.csv")
+    hash_to_grid_table = filterer.generate_grid_table()
 
     hash_present_point = list(present_points).pop()
     hash_present_grid = list(present_grids).pop()

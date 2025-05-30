@@ -223,6 +223,73 @@ class DataBaseFront:
             print(e)
             print(translated_dict)
 
+    def sql_insert_citacio_bulk(self, insert_params_set, id_paquet):
+        records_list_template = ','.join(['%s'] * len(insert_params_set))
+        query = "INSERT INTO public.citacions( especie, idspinvasora, grup, utmx, utmy, data, autor_s, localitat, hash, observacions, id_paquet) VALUES {};".format(records_list_template)
+        self.cursor.execute(query, insert_params_set)
+        self.conn.commit()
+
+        self.logger.info("Bulk inserting citacions...")
+        self.cursor.execute(
+            """
+            UPDATE public.citacions c set 
+            geom_4326 = st_geomfromtext( 'POINT(' || c.utmx || ' ' || c.utmy || ')' ,4326) 
+            where id_paquet=%s;            
+            """,
+            ( id_paquet, )
+        )
+        self.conn.commit()
+        self.logger.info("Done Bulk inserting citacions...")
+
+        self.logger.info("Updating citacions geometry...")
+        self.cursor.execute(
+            """
+            UPDATE public.citacions set
+                geom = st_transform(geom_4326,23031),
+                geom_25831 = st_transform(geom_4326, 25831),
+                utmx =  st_x(st_transform(geom_4326,23031)),
+                utmy =  st_y(st_transform(geom_4326,23031))
+                where id_paquet = %s;
+            """,
+            (id_paquet,)
+        )
+        self.conn.commit()
+        self.logger.info("Done updating citacions geometry...")
+
+
+    def sql_insert_citacio_10_bulk(self, insert_params_set):
+        records_list_template = ','.join(['%s'] * len(insert_params_set))
+        query = "INSERT INTO public.citacions_10( especie, idspinvasora, grup, utm_10, descripcio, data, autor_s, font, referencia, hash, id_paquet) VALUES {};".format(records_list_template)
+        self.cursor.execute(query, insert_params_set)
+        self.conn.commit()
+
+        # self.logger.info("Bulk inserting citacions...")
+        # self.cursor.execute(
+        #     """
+        #     UPDATE public.citacions c set
+        #     geom_4326 = st_geomfromtext( 'POINT(' || c.utmx || ' ' || c.utmy || ')' ,4326)
+        #     where id_paquet=%s;
+        #     """,
+        #     ( id_paquet, )
+        # )
+        # self.conn.commit()
+        # self.logger.info("Done Bulk inserting citacions...")
+        #
+        # self.logger.info("Updating citacions geometry...")
+        # self.cursor.execute(
+        #     """
+        #     UPDATE public.citacions set
+        #         geom = st_transform(geom_4326,23031),
+        #         geom_25831 = st_transform(geom_4326, 25831),
+        #         utmx =  st_x(st_transform(geom_4326,23031)),
+        #         utmy =  st_y(st_transform(geom_4326,23031))
+        #         where id_paquet = %s;
+        #     """,
+        #     (id_paquet,)
+        # )
+        # self.conn.commit()
+        # self.logger.info("Done updating citacions geometry...")
+
     def sql_insert_citacio(self, translated_dict, id_paquet):
         try:
             self.cursor.execute(
@@ -316,3 +383,5 @@ class DataBaseFront:
         for r in results_present:
             retval.add( r[1] )
         return retval
+
+
