@@ -165,15 +165,21 @@ def process_file_faster(file_name, reverse_resolution_cache, results_folder):
         outside_file=results_folder + "/outside_points.csv",
         inside_file=results_folder + "/inside_points.csv"
     )
+    logger.info("*********************")
+    logger.info("Computing inside and outside points")
     filterer.split_citacions(
         input_file=results_folder + "/inside_points.csv",
         output_point_file=results_folder + "/inside_points_p.csv",
         output_grid_file=results_folder + "/inside_points_grid.csv"
     )
+    logger.info("Done computing inside and outside")
 
     filterer = Filterer("./shapefile_grid/grid_10000.shp",
                         results_folder + "/inside_points_grid.csv", logger)
+    logger.info("*********************")
+    logger.info("Generating grid table....")
     hash_to_grid_table = filterer.generate_grid_table()
+    logger.info("Done generating grid table")
 
     database = DataBaseFront(settings, logger)
     adapter = GBIFToExoAdapter(id_translator=reverse_resolution_cache, ten_ten_resolver=database, logger=logger)
@@ -187,25 +193,61 @@ def process_file_faster(file_name, reverse_resolution_cache, results_folder):
         table="citacions_10"
     )
 
+    logger.info("*********************")
+    logger.info("Creating insert params for points....")
     params_insert_point = adapter.get_insert_params_point(
         points_file=results_folder + "/inside_points_p.csv",
         presence_table=present_points,
         id_paquet=id_paquet
     )
-
-    print( "{} sets of insert params".format(len(params_insert_point)) )
+    logger.info( "Done creating insert params for points, produced {} sets of params".format(len(params_insert_point)) )
     if len(params_insert_point) > 0:
         database.sql_insert_citacio_bulk(params_insert_point,id_paquet)
+    else:
+        logger.info( "No insert params for points, doing nothing")
 
+    logger.info("*********************")
+    logger.info("Creating insert params for 10x10 grid....")
     params_insert_10 = adapter.get_insert_params_10(
         grid_file=results_folder + "/inside_points_grid.csv",
         presence_table=present_grids,
         id_paquet=id_paquet,
         grid_presence=hash_to_grid_table
     )
-    print("{} sets of insert params".format(len(params_insert_10)))
+
+    logger.info("Done creating insert params for grid, produced {} sets of params".format(len(params_insert_10)))
     if len(params_insert_10) > 0:
         database.sql_insert_citacio_10_bulk(params_insert_10)
+    else:
+        logger.info("No insert params for grid, doing nothing")
+
+    logger.info("*********************")
+    logger.info("Creating update params for points....")
+    params_update = adapter.get_update_params_point(
+        points_file=results_folder + "/inside_points_p.csv",
+        presence_table=present_points,
+        id_paquet=id_paquet
+    )
+    logger.info("Done creating update params for point, produced {} sets of params".format(len(params_update)))
+    if len(params_update) > 0:
+        database.sql_update_citacio_bulk(params_update, id_paquet)
+    else:
+        logger.info("No update params for point, doing nothing")
+
+    logger.info("*********************")
+    logger.info("Creating update params for grid....")
+    params_update_grid = adapter.get_update_params_grid(
+        grid_file=results_folder + "/inside_points_grid.csv",
+        presence_table=present_grids,
+        id_paquet=id_paquet,
+        grid_presence=hash_to_grid_table
+    )
+    logger.info("Done creating update params for grid, produced {} sets of params".format(len(params_update_grid)))
+    if len(params_update_grid) > 0:
+        database.sql_update_grid_bulk(params_update_grid)
+    else:
+        logger.info("No update params for grid, doing nothing")
+
 
 def process_file(file_name, reverse_resolution_cache):
     logger.info("*********************")

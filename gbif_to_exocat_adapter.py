@@ -48,6 +48,26 @@ class GBIFToExoAdapter:
                 retval[key] = append[key]
         return retval
 
+    def translate_tuple_point_for_update(self, gbif_data, id_paquet):
+        try:
+            retval = (
+                self.id_translator[gbif_data[33]][0],   # Nom de la espècie
+                self.id_translator[gbif_data[33]][1],   # Id espècie invasora
+                self.id_translator[gbif_data[33]][2],   # Grup del taxon
+                gbif_data[22],                          # Coordenada x de la citacio
+                gbif_data[21],                          # Coordenada y de la citacio
+                gbif_data[29],                          # Data de la observacio
+                gbif_data[44][:254],                    # Autor de la cita,
+                gbif_data[16][:254],                    # Localitat
+                '',                                     # observacions
+                id_paquet,                              # id_paquet
+                gbif_data[0],                           # hash
+            )
+            return retval
+        except KeyError:
+            self.logger.info("Key Miss for species {0}, {1}".format(gbif_data[33], gbif_data[9]))
+            return None
+
     def translate_tuple_point(self, gbif_data, id_paquet):
         try:
             retval = (
@@ -97,6 +117,26 @@ class GBIFToExoAdapter:
             self.logger.info("Key Miss for species {0}, {1}".format(gbif_data[33], gbif_data[9]))
             return None
 
+    def translate_tuple_grid_for_update(self, gbif_data, grid_presence, id_paquet):
+        try:
+            retval = (
+                self.id_translator[gbif_data[33]][0],   # Nom de la espècie
+                self.id_translator[gbif_data[33]][1],   # Id espècie invasora
+                self.id_translator[gbif_data[33]][2],   # Grup del taxon
+                grid_presence['id'][int(gbif_data[0])], # utm_10
+                gbif_data[16],                          # descripcio
+                gbif_data[29],                          # Data de la observacio
+                gbif_data[44][:254],                    # Autor de la cita,
+                gbif_data[36],                          # Font
+                gbif_data[43],                          # Referencia
+                id_paquet,                              # id_paquet
+                gbif_data[0]                            # hash
+            )
+            return retval
+        except KeyError:
+            self.logger.info("Key Miss for species {0}, {1}".format(gbif_data[33], gbif_data[9]))
+            return None
+
     def get_insert_params_point(self, points_file, presence_table, id_paquet):
         params = []
         key_hits = 0
@@ -115,8 +155,49 @@ class GBIFToExoAdapter:
                             key_hits = key_hits + 1
                         else:
                             key_misses = key_misses + 1
-
         self.logger.info("Hits {0}, misses {1}".format( key_hits, key_misses ))
+        return params
+
+    def get_update_params_grid(self, grid_file, presence_table, id_paquet, grid_presence):
+        params = []
+        key_hits = 0
+        key_misses = 0
+        with open(grid_file) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter='\t', quotechar='"')
+            first = True
+            for row in csv_reader:
+                if first:
+                    first = False
+                else:
+                    if row[0] in presence_table:
+                        param_row = self.translate_tuple_grid_for_update(row, grid_presence, id_paquet)
+                        if param_row:
+                            params.append(param_row)
+                            key_hits = key_hits + 1
+                        else:
+                            key_misses = key_misses + 1
+        self.logger.info("Hits {0}, misses {1}".format(key_hits, key_misses))
+        return params
+
+    def get_update_params_point(self, points_file, presence_table, id_paquet):
+        params = []
+        key_hits = 0
+        key_misses = 0
+        with open(points_file) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter='\t', quotechar='"')
+            first = True
+            for row in csv_reader:
+                if first:
+                    first = False
+                else:
+                    if row[0] in presence_table:
+                        param_row = self.translate_tuple_point_for_update(row, id_paquet)
+                        if param_row:
+                            params.append(param_row)
+                            key_hits = key_hits + 1
+                        else:
+                            key_misses = key_misses + 1
+        self.logger.info("Hits {0}, misses {1}".format(key_hits, key_misses))
         return params
 
     def get_insert_params_10(self, grid_file, presence_table, id_paquet, grid_presence):

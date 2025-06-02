@@ -223,25 +223,75 @@ class DataBaseFront:
             print(e)
             print(translated_dict)
 
+    def sql_update_grid_bulk(self, update_params_set):
+        # especie, idspinvasora, grup, utm_10, descripcio, data, autor_s, font, referencia, id_paquet
+        self.logger.info("Bulk updating citacions...")
+        records_list_template = ','.join(['%s'] * len(update_params_set))
+        query = """
+                UPDATE citacions_10
+                SET
+                especie = update_payload.especie,
+                idspinvasora = update_payload.idspinvasora,
+                grup = update_payload.grup,
+                utm_10 = update_payload.utm_10,
+                descripcio = update_payload.descripcio,
+                data = update_payload.data,
+                autor_s = update_payload.autor_s,
+                font = update_payload.font,
+                referencia = update_payload.referencia,
+                id_paquet = update_payload.id_paquet
+                FROM (VALUES {}) AS update_payload (especie, idspinvasora, grup, utm_10, descripcio, data, autor_s, font, referencia, id_paquet, hash)
+                WHERE citacions_10.hash = update_payload.hash
+                """.format(records_list_template)
+        self.cursor.execute(query, update_params_set)
+        self.conn.commit()
+
+    def sql_update_citacio_bulk(self, update_params_set, id_paquet):
+        self.logger.info("Bulk updating citacions...")
+        records_list_template = ','.join(['%s'] * len(update_params_set))
+        query = """
+        UPDATE citacions
+        SET
+        especie = update_payload.especie,
+        idspinvasora = update_payload.idspinvasora,
+        grup = update_payload.grup,
+        utmx = update_payload.utmx::double precision,
+        utmy = update_payload.utmy::double precision,
+        data = update_payload.data,
+        autor_s = update_payload.autor_s,
+        localitat = update_payload.localitat,
+        observacions = update_payload.observacions,
+        id_paquet = update_payload.id_paquet
+        FROM (VALUES {}) AS update_payload (especie, idspinvasora, grup, utmx, utmy, data, autor_s, localitat, observacions, id_paquet, hash)
+        WHERE citacions.hash = update_payload.hash
+        """.format(records_list_template)
+        self.cursor.execute(query, update_params_set)
+        self.conn.commit()
+        self.update_citacions_geometry(id_paquet)
+
+
     def sql_insert_citacio_bulk(self, insert_params_set, id_paquet):
         records_list_template = ','.join(['%s'] * len(insert_params_set))
         query = "INSERT INTO public.citacions( especie, idspinvasora, grup, utmx, utmy, data, autor_s, localitat, hash, observacions, id_paquet) VALUES {};".format(records_list_template)
-        self.cursor.execute(query, insert_params_set)
-        self.conn.commit()
 
         self.logger.info("Bulk inserting citacions...")
+        self.cursor.execute(query, insert_params_set)
+        self.conn.commit()
+        self.logger.info("Done Bulk inserting citacions...")
+        self.update_citacions_geometry(id_paquet)
+
+
+    def update_citacions_geometry(self,id_paquet):
+        self.logger.info("Updating citacions geometry...")
         self.cursor.execute(
             """
             UPDATE public.citacions c set 
             geom_4326 = st_geomfromtext( 'POINT(' || c.utmx || ' ' || c.utmy || ')' ,4326) 
             where id_paquet=%s;            
             """,
-            ( id_paquet, )
+            (id_paquet,)
         )
         self.conn.commit()
-        self.logger.info("Done Bulk inserting citacions...")
-
-        self.logger.info("Updating citacions geometry...")
         self.cursor.execute(
             """
             UPDATE public.citacions set
@@ -260,35 +310,28 @@ class DataBaseFront:
     def sql_insert_citacio_10_bulk(self, insert_params_set):
         records_list_template = ','.join(['%s'] * len(insert_params_set))
         query = "INSERT INTO public.citacions_10( especie, idspinvasora, grup, utm_10, descripcio, data, autor_s, font, referencia, hash, id_paquet) VALUES {};".format(records_list_template)
+        self.logger.info("Bulk inserting citacions 10x10...")
         self.cursor.execute(query, insert_params_set)
         self.conn.commit()
+        self.logger.info("Done bulk inserting citacions 10x10")
 
-        # self.logger.info("Bulk inserting citacions...")
-        # self.cursor.execute(
-        #     """
-        #     UPDATE public.citacions c set
-        #     geom_4326 = st_geomfromtext( 'POINT(' || c.utmx || ' ' || c.utmy || ')' ,4326)
-        #     where id_paquet=%s;
-        #     """,
-        #     ( id_paquet, )
-        # )
-        # self.conn.commit()
-        # self.logger.info("Done Bulk inserting citacions...")
-        #
-        # self.logger.info("Updating citacions geometry...")
-        # self.cursor.execute(
-        #     """
-        #     UPDATE public.citacions set
-        #         geom = st_transform(geom_4326,23031),
-        #         geom_25831 = st_transform(geom_4326, 25831),
-        #         utmx =  st_x(st_transform(geom_4326,23031)),
-        #         utmy =  st_y(st_transform(geom_4326,23031))
-        #         where id_paquet = %s;
-        #     """,
-        #     (id_paquet,)
-        # )
-        # self.conn.commit()
-        # self.logger.info("Done updating citacions geometry...")
+        self.logger.info("Inserting presence 10x10...")
+        for params in insert_params_set:
+            try:
+                self.cursor.execute(
+                    """
+                        INSERT INTO public.presencia_sp(idquadricula, idspinvasora) VALUES (%s, %s)
+                        """,
+                    (
+                        params[3],
+                        params[1]
+                    )
+                )
+                self.conn.commit()
+                self.logger.info("Inserted {} {}".format(params[3], params[1]))
+            except psycopg2.IntegrityError:
+                self.logger.info("Already present {} {}".format(params[3], params[1]))
+        self.logger.info("Done Inserting presence 10x10")
 
     def sql_insert_citacio(self, translated_dict, id_paquet):
         try:
