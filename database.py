@@ -2,6 +2,7 @@ import settings
 import psycopg2
 import csv
 from io import StringIO
+from psycopg2.extras import execute_values
 
 
 class DataBaseFront:
@@ -308,6 +309,20 @@ class DataBaseFront:
 
 
     def sql_insert_citacio_10_bulk(self, insert_params_set):
+
+        # Remove duplicate records from presencia_sp
+        #
+        # DELETE FROM presencia_sp
+        # WHERE ctid IN (
+        #     SELECT ctid
+        #     FROM (
+        #         SELECT ctid,
+        #             ROW_NUMBER() OVER (PARTITION BY idquadricula, idspinvasora ORDER BY ctid) AS rn
+        #         FROM presencia_sp
+        #     ) sub
+        #     WHERE rn > 1
+        # );
+
         records_list_template = ','.join(['%s'] * len(insert_params_set))
         query = "INSERT INTO public.citacions_10( especie, idspinvasora, grup, utm_10, descripcio, data, autor_s, font, referencia, hash, id_paquet) VALUES {};".format(records_list_template)
         self.logger.info("Bulk inserting citacions 10x10...")
@@ -316,22 +331,22 @@ class DataBaseFront:
         self.logger.info("Done bulk inserting citacions 10x10")
 
         self.logger.info("Inserting presence 10x10...")
-        for params in insert_params_set:
-            try:
-                self.cursor.execute(
-                    """
-                        INSERT INTO public.presencia_sp(idquadricula, idspinvasora) VALUES (%s, %s)
-                        """,
-                    (
-                        params[3],
-                        params[1]
-                    )
-                )
-                self.conn.commit()
-                self.logger.info("Inserted {} {}".format(params[3], params[1]))
-            except psycopg2.IntegrityError:
-                self.logger.info("Already present {} {}".format(params[3], params[1]))
-        self.logger.info("Done Inserting presence 10x10")
+        
+        bulk_presence_params = list(set((x[3], x[1]) for x in insert_params_set))
+        self.logger.info("Going to perform bulk delete/insert for")
+        for params in bulk_presence_params:
+            self.logger.info("{} {}".format( params[0], params[1] ))
+
+        
+        query_delete_presence = "DELETE FROM public.presencia_sp where (idquadricula,idspinvasora) in (%s)"
+        execute_values( self.cursor, query_delete_presence, bulk_presence_params )
+        self.conn.commit()
+
+        query_insert_presence = "INSERT into public.presencia_sp(idquadricula, idspinvasora) values %s"
+        execute_values( self.cursor, query_insert_presence, bulk_presence_params )
+        self.conn.commit()
+        
+        self.logger.info("Done Inserting presence 10x10")        
 
     def sql_insert_citacio(self, translated_dict, id_paquet):
         try:
